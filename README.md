@@ -816,3 +816,30 @@ Once comfortable, consider adding:
 ## License
 
 This project is for personal/educational use. Plex is a trademark of Plex, Inc.
+
+```
+# 1. Check if the namespace was created
+kubectl get namespaces
+
+# 2. Check all resources in the media namespace
+kubectl -n media get all
+
+# 3. Check the pod status (should show "Running")
+kubectl -n media get pods
+
+# 4. Check the pod details and events
+kubectl -n media describe pod -l app=plex
+
+# 5. View Plex logs (real-time)
+kubectl -n media logs -f deployment/plex
+
+# 6. Check if PersistentVolumes are bound
+kubectl get pv
+kubectl -n media get pvc
+
+# 7. Check the service and get the external IP
+kubectl -n media get svc
+
+# 8. Find your Raspberry Pi's IP address
+hostname -I
+```
