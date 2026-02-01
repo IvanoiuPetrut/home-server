@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plex
+  namespace: media
+  labels:
+    app: plex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plex
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: plex
+    spec:
+      hostNetwork: true
+      containers:
+        - name: plex
+          image: linuxserver/plex:arm64v8-latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pms
+              containerPort: 32400
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "Europe/Bucharest"
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: PLEX_CLAIM
+              valueFrom:
+                secretKeyRef:
+                  name: plex-secrets
+                  key: claim-token
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: media
+              mountPath: /data
+              readOnly: true
+            - name: transcode
+              mountPath: /transcode
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /identity
+              port: 32400
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /identity
+              port: 32400
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: plex-config-pvc
+        - name: media
+          persistentVolumeClaim:
+            claimName: plex-media-pvc
+        - name: transcode
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
