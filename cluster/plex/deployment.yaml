@@ -22,10 +22,6 @@ spec:
         - name: plex
           image: linuxserver/plex:arm64v8-latest
           imagePullPolicy: IfNotPresent
-          ports:
-            - name: pms
-              containerPort: 32400
-              protocol: TCP
           env:
             - name: TZ
               value: "Europe/Bucharest"

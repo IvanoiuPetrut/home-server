@@ -7,5 +7,5 @@ resources:
   - namespace.yaml
   - pvc.yaml
   - deployment.yaml
-  - service.yaml
   - secret.yaml
+  # service.yaml not needed with hostNetwork: true
