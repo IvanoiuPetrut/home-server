@@ -199,9 +199,10 @@ home-server/
 ├── .gitignore                    # Prevents secrets from being committed
 ├── README.md                     # This file
 └── cluster/                      # All Kubernetes manifests
-    ├── namespace.yaml            # Creates the 'media' namespace
+    ├── namespace.yaml            # Creates the 'media' namespace (kept for reference)
     └── plex/                     # Plex-specific resources
         ├── kustomization.yaml    # Kustomize configuration
+        ├── namespace.yaml        # Namespace definition
         ├── deployment.yaml       # Plex container configuration
         ├── service.yaml          # Network exposure
         ├── pvc.yaml              # Storage configuration
@@ -553,22 +554,67 @@ export KUBECONFIG=~/.kube/config
 
 ## Setup Guide
 
-### 1. Prepare Storage Directories
+### 1. Clone the Repository on Your Raspberry Pi
+
+SSH into your Raspberry Pi and clone the project:
 
 ```bash
-# Create directories on your external HDD
+# SSH into your Raspberry Pi (from your computer)
+ssh your-username@raspberry-pi-ip
+
+# Install git if not already installed
+sudo apt update && sudo apt install -y git
+
+# Choose where to store your configs (home directory is fine)
+cd ~
+
+# Clone your repository (replace with your GitHub username)
+git clone https://github.com/YOUR_USERNAME/home-server.git
+
+# Enter the project directory
+cd home-server
+```
+
+**Recommended location**: `~/home-server` or `/opt/home-server`
+
+> **Tip**: If you want to pull updates later, just run `git pull` from the project directory.
+
+---
+
+### 2. Prepare Storage Directories
+
+First, find your external HDD mount point:
+
+```bash
+# List all mounted drives
+lsblk
+
+# Or check disk usage to find your external HDD
+df -h
+```
+
+Your external HDD is likely mounted at something like:
+
+- `/mnt/external-hdd`
+- `/media/your-username/drive-name`
+- `/mnt/usb`
+
+Then create the directories:
+
+```bash
+# Replace /mnt/external-hdd with your actual mount point!
 sudo mkdir -p /mnt/external-hdd/plex/config
 sudo mkdir -p /mnt/external-hdd/media
 
 # Set ownership (1000 is typically the first user)
 sudo chown -R 1000:1000 /mnt/external-hdd/plex
 
-# Verify your external HDD mount point
-df -h | grep external
-# Update paths in pvc.yaml if different from /mnt/external-hdd
+# IMPORTANT: Update the paths in pvc.yaml to match your mount point
+nano ~/home-server/cluster/plex/pvc.yaml
+# Change /mnt/external-hdd to your actual path
 ```
 
-### 2. Add Your Media
+### 3. Add Your Media
 
 ```bash
 # Copy or move your media files
@@ -576,7 +622,7 @@ cp -r /path/to/your/movies /mnt/external-hdd/media/movies
 cp -r /path/to/your/tvshows /mnt/external-hdd/media/tvshows
 ```
 
-### 3. Set Up Environment Variable for Plex Claim Token
+### 4. Set Up Environment Variable for Plex Claim Token
 
 The Plex claim token links your server to your Plex account. It's optional but recommended.
 
@@ -602,11 +648,22 @@ source ~/.bashrc
 ### Using Kustomize (Recommended)
 
 ```bash
-# Make sure your environment variable is set
+# First, set up kubectl permissions (one-time setup)
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
+export KUBECONFIG=~/.kube/config
+echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
+
+# Navigate to your project
+cd ~/home-server
+
+# Set your Plex claim token
 export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"
 
 # Deploy with environment variable substitution
-kustomize build cluster/plex/ | envsubst | kubectl apply -f -
+# Note: K3s includes kustomize in kubectl, so use 'kubectl kustomize'
+kubectl kustomize cluster/plex/ | envsubst | kubectl apply -f -
 
 # Watch the deployment
 kubectl -n media get pods -w
@@ -617,18 +674,27 @@ kubectl -n media get all
 
 **What's happening here?**
 
-1. `kustomize build` - Combines all YAML files
+1. `kubectl kustomize cluster/plex/` - Combines all YAML files (K3s has kustomize built-in)
 2. `envsubst` - Replaces `${PLEX_CLAIM_TOKEN}` with your actual token
 3. `kubectl apply -f -` - Applies the result to Kubernetes
 
 ### Manual Deployment
 
 ```bash
+# Set up kubectl permissions (if not done already)
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
+export KUBECONFIG=~/.kube/config
+
 # Set your environment variable
 export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"
 
+# Navigate to project
+cd ~/home-server
+
 # Apply in order (namespace first, then storage, then app)
-kubectl apply -f cluster/namespace.yaml
+kubectl apply -f cluster/plex/namespace.yaml
 kubectl apply -f cluster/plex/pvc.yaml
 envsubst < cluster/plex/secret.yaml | kubectl apply -f -
 kubectl apply -f cluster/plex/deployment.yaml
@@ -644,7 +710,7 @@ If you don't want to use a claim token (you can link Plex manually later):
 export PLEX_CLAIM_TOKEN=""
 
 # Then deploy normally
-kustomize build cluster/plex/ | envsubst | kubectl apply -f -
+kubectl kustomize cluster/plex/ | envsubst | kubectl apply -f -
 ```
 
 ### Verify Deployment
