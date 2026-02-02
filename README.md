@@ -1,6 +1,6 @@
 # Home Server - Kubernetes on Raspberry Pi
 
-A self-hosted media server running on a Raspberry Pi with K3s (lightweight Kubernetes). This project is designed for learning Kubernetes concepts while building something practical.
+A self-hosted media server running on a Raspberry Pi with K3s (lightweight Kubernetes). This project deploys Jellyfin, a fully open-source media server, and is designed for learning Kubernetes concepts while building something practical.
 
 ## 📚 Table of Contents
 
@@ -21,7 +21,7 @@ A self-hosted media server running on a Raspberry Pi with K3s (lightweight Kuber
 
 ### What is This Project?
 
-This project deploys a **Plex Media Server** on a Raspberry Pi using **K3s**, a lightweight Kubernetes distribution. Plex allows you to organize and stream your personal media (movies, TV shows, music) to any device on your network or remotely.
+This project deploys **Jellyfin** on a Raspberry Pi using **K3s**, a lightweight Kubernetes distribution. Jellyfin is a free, open-source media server that allows you to organize and stream your personal media (movies, TV shows, music) to any device on your network or remotely - no accounts, tracking, or premium features required!
 
 ### Why Kubernetes on a Raspberry Pi?
 
@@ -52,33 +52,34 @@ It removes heavy components (like etcd, cloud providers) and packages everything
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                    Namespace: media                       │  │
 │  │  ┌─────────────────────────────────────────────────────┐  │  │
-│  │  │              Deployment: plex                       │  │  │
+│  │  │              Deployment: jellyfin                   │  │  │
 │  │  │  ┌───────────────────────────────────────────────┐  │  │  │
-│  │  │  │                 Pod: plex                     │  │  │  │
+│  │  │  │                 Pod: jellyfin                 │  │  │  │
 │  │  │  │  ┌─────────────────────────────────────────┐  │  │  │  │
-│  │  │  │  │      Container: linuxserver/plex        │  │  │  │  │
+│  │  │  │  │      Container: jellyfin/jellyfin       │  │  │  │  │
 │  │  │  │  │                                         │  │  │  │  │
-│  │  │  │  │   Port 32400 ◄─── Service (LoadBalancer)│  │  │  │  │
+│  │  │  │  │   Port 8096 ◄──── Service (LoadBalancer)│  │  │  │  │
 │  │  │  │  └─────────────────────────────────────────┘  │  │  │  │
 │  │  │  │       │              │              │         │  │  │  │
 │  │  │  │       ▼              ▼              ▼         │  │  │  │
-│  │  │  │   /config        /data         /transcode    │  │  │  │
+│  │  │  │   /config        /media         /cache       │  │  │  │
 │  │  │  └───────┬──────────────┬──────────────┬────────┘  │  │  │
 │  │  └──────────┼──────────────┼──────────────┼───────────┘  │  │
 │  └─────────────┼──────────────┼──────────────┼──────────────┘  │
 │                │              │              │                  │
 │                ▼              ▼              ▼                  │
-│         PVC: config    PVC: media      emptyDir (RAM)          │
-│                │              │                                 │
-│                ▼              ▼                                 │
-│         PV: config     PV: media                               │
+│         PVC: config    PVC: media      PVC: cache              │
+│                │              │              │                  │
+│                ▼              ▼              ▼                  │
+│         PV: config     PV: media       PV: cache               │
 │                │              │                                 │
 └────────────────┼──────────────┼─────────────────────────────────┘
                  │              │
                  ▼              ▼
     ┌────────────────────────────────────────┐
     │         External HDD (USB)             │
-    │  /mnt/external-hdd/plex/config         │
+    │  /mnt/external-hdd/jellyfin/config     │
+    │  /mnt/external-hdd/jellyfin/cache      │
     │  /mnt/external-hdd/media               │
     └────────────────────────────────────────┘
 ```
@@ -200,13 +201,12 @@ home-server/
 ├── README.md                     # This file
 └── cluster/                      # All Kubernetes manifests
     ├── namespace.yaml            # Creates the 'media' namespace (kept for reference)
-    └── plex/                     # Plex-specific resources
+    └── jellyfin/                 # Jellyfin-specific resources
         ├── kustomization.yaml    # Kustomize configuration
         ├── namespace.yaml        # Namespace definition
-        ├── deployment.yaml       # Plex container configuration
+        ├── deployment.yaml       # Jellyfin container configuration
         ├── service.yaml          # Network exposure
-        ├── pvc.yaml              # Storage configuration
-        └── secret.yaml           # Secrets (uses env variable substitution)
+        └── pvc.yaml              # Storage configuration
 ```
 
 ---
@@ -603,14 +603,15 @@ Then create the directories:
 
 ```bash
 # Replace /mnt/external-hdd with your actual mount point!
-sudo mkdir -p /mnt/external-hdd/plex/config
+sudo mkdir -p /mnt/external-hdd/jellyfin/config
+sudo mkdir -p /mnt/external-hdd/jellyfin/cache
 sudo mkdir -p /mnt/external-hdd/media
 
 # Set ownership (1000 is typically the first user)
-sudo chown -R 1000:1000 /mnt/external-hdd/plex
+sudo chown -R 1000:1000 /mnt/external-hdd/jellyfin
 
 # IMPORTANT: Update the paths in pvc.yaml to match your mount point
-nano ~/home-server/cluster/plex/pvc.yaml
+nano ~/home-server/cluster/jellyfin/pvc.yaml
 # Change /mnt/external-hdd to your actual path
 ```
 
@@ -622,24 +623,14 @@ cp -r /path/to/your/movies /mnt/external-hdd/media/movies
 cp -r /path/to/your/tvshows /mnt/external-hdd/media/tvshows
 ```
 
-### 4. Set Up Environment Variable for Plex Claim Token
+### 4. Update Jellyfin Configuration (Optional)
 
-The Plex claim token links your server to your Plex account. It's optional but recommended.
-
-1. Go to https://www.plex.tv/claim/
-2. Copy the claim token (valid for 4 minutes!)
-3. Set it as an environment variable on your Raspberry Pi:
+If your Raspberry Pi's IP is different from `192.168.1.127`, update it in the deployment:
 
 ```bash
-# For current session
-export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"
-
-# To persist across reboots, add to your shell profile
-echo 'export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"' >> ~/.bashrc
-source ~/.bashrc
+nano ~/home-server/cluster/jellyfin/deployment.yaml
+# Find JELLYFIN_PublishedServerUrl and update the IP address
 ```
-
-> **Note**: The claim token is only needed for the initial setup. After Plex is linked to your account, you can remove the environment variable.
 
 ---
 
@@ -658,12 +649,8 @@ echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
 # Navigate to your project
 cd ~/home-server
 
-# Set your Plex claim token
-export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"
-
-# Deploy with environment variable substitution
-# Note: K3s includes kustomize in kubectl, so use 'kubectl kustomize'
-kubectl kustomize cluster/plex/ | envsubst | kubectl apply -f -
+# Deploy Jellyfin
+kubectl apply -k cluster/jellyfin/
 
 # Watch the deployment
 kubectl -n media get pods -w
@@ -674,9 +661,9 @@ kubectl -n media get all
 
 **What's happening here?**
 
-1. `kubectl kustomize cluster/plex/` - Combines all YAML files (K3s has kustomize built-in)
-2. `envsubst` - Replaces `${PLEX_CLAIM_TOKEN}` with your actual token
-3. `kubectl apply -f -` - Applies the result to Kubernetes
+1. `kubectl apply -k cluster/jellyfin/` - Applies all resources using Kustomize
+2. Kubernetes creates the namespace, storage, deployment, and service
+3. Jellyfin container starts and binds to port 8096
 
 ### Manual Deployment
 
@@ -687,30 +674,14 @@ sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER:$USER ~/.kube/config
 export KUBECONFIG=~/.kube/config
 
-# Set your environment variable
-export PLEX_CLAIM_TOKEN="claim-xxxxxxxxxxxxxxxxxxxx"
-
 # Navigate to project
 cd ~/home-server
 
 # Apply in order (namespace first, then storage, then app)
-kubectl apply -f cluster/plex/namespace.yaml
-kubectl apply -f cluster/plex/pvc.yaml
-envsubst < cluster/plex/secret.yaml | kubectl apply -f -
-kubectl apply -f cluster/plex/deployment.yaml
-kubectl apply -f cluster/plex/service.yaml
-```
-
-### Deploy Without Plex Claim Token
-
-If you don't want to use a claim token (you can link Plex manually later):
-
-```bash
-# Set empty token
-export PLEX_CLAIM_TOKEN=""
-
-# Then deploy normally
-kubectl kustomize cluster/plex/ | envsubst | kubectl apply -f -
+kubectl apply -f cluster/jellyfin/namespace.yaml
+kubectl apply -f cluster/jellyfin/pvc.yaml
+kubectl apply -f cluster/jellyfin/deployment.yaml
+kubectl apply -f cluster/jellyfin/service.yaml
 ```
 
 ### Verify Deployment
@@ -720,20 +691,24 @@ kubectl kustomize cluster/plex/ | envsubst | kubectl apply -f -
 kubectl -n media get pods
 
 # Check pod logs
-kubectl -n media logs -f deployment/plex
+kubectl -n media logs -f deployment/jellyfin
 
 # Check service
 kubectl -n media get svc
 
 # Describe pod for troubleshooting
-kubectl -n media describe pod -l app=plex
+kubectl -n media describe pod -l app=jellyfin
 ```
 
-### Access Plex
+### Access Jellyfin
 
 1. Find your Raspberry Pi's IP: `hostname -I`
-2. Open in browser: `http://<raspberry-pi-ip>:32400/web`
-3. Complete Plex setup wizard
+2. Open in browser: `http://<raspberry-pi-ip>:8096`
+3. Complete Jellyfin setup wizard:
+   - Choose your language
+   - Create an admin account
+   - Add media libraries (browse to `/media`)
+   - Configure remote access (optional)
 
 ---
 
@@ -743,12 +718,12 @@ kubectl -n media describe pod -l app=plex
 
 ```bash
 # Check pod events
-kubectl -n media describe pod -l app=plex
+kubectl -n media describe pod -l app=jellyfin
 
 # Common issues:
 # - "no persistent volumes available" → Check PV paths exist
 # - "ImagePullBackOff" → Check internet connection
-# - "CrashLoopBackOff" → Check logs: kubectl -n media logs -l app=plex
+# - "CrashLoopBackOff" → Check logs: kubectl -n media logs -l app=jellyfin
 ```
 
 ### Storage Issues
@@ -766,14 +741,14 @@ ls -la /mnt/external-hdd/media
 ### Network Issues
 
 ```bash
-# Check if Plex is listening
-sudo netstat -tlnp | grep 32400
+# Check if Jellyfin is listening
+sudo netstat -tlnp | grep 8096
 
 # Check service
-kubectl -n media get svc plex
+kubectl -n media get svc jellyfin
 
 # Test from another device
-curl http://<pi-ip>:32400/identity
+curl http://<pi-ip>:8096/health
 ```
 
 ### Resource Issues
@@ -796,10 +771,10 @@ kubectl top pods -n media
 - [Kubernetes The Hard Way](https://github.com/kelseyhightower/kubernetes-the-hard-way)
 - [K3s Documentation](https://docs.k3s.io/)
 
-### Plex
+### Jellyfin
 
-- [Plex Support](https://support.plex.tv/)
-- [LinuxServer.io Plex Image](https://docs.linuxserver.io/images/docker-plex)
+- [Jellyfin Documentation](https://jellyfin.org/docs/)
+- [Jellyfin Docker Hub](https://hub.docker.com/r/jellyfin/jellyfin)
 
 ### Related Projects to Add
 
@@ -808,14 +783,14 @@ Once comfortable, consider adding:
 - **Sonarr** - TV show management
 - **Radarr** - Movie management
 - **Prowlarr** - Indexer management
-- **Overseerr** - Request management
-- **Tautulli** - Plex statistics
+- **Jellyseerr** - Request management (Jellyfin version of Overseerr)
+- **Jellyfin Vue** - Modern web client
 
 ---
 
 ## License
 
-This project is for personal/educational use. Plex is a trademark of Plex, Inc.
+This project is for personal/educational use. Jellyfin is licensed under the GNU GPL.
 
 ```
 # 1. Check if the namespace was created

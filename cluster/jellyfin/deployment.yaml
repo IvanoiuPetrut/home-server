@@ -1,48 +1,46 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: plex
+  name: jellyfin
   namespace: media
   labels:
-    app: plex
+    app: jellyfin
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: plex
+      app: jellyfin
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: plex
+        app: jellyfin
     spec:
-      hostNetwork: true
       containers:
-        - name: plex
-          image: linuxserver/plex:arm64v8-latest
+        - name: jellyfin
+          image: jellyfin/jellyfin:latest
           imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8096
+              protocol: TCP
+            - name: https
+              containerPort: 8920
+              protocol: TCP
           env:
             - name: TZ
               value: "Europe/Bucharest"
-            - name: PUID
-              value: "1000"
-            - name: PGID
-              value: "1000"
-            - name: PLEX_CLAIM
-              valueFrom:
-                secretKeyRef:
-                  name: plex-secrets
-                  key: claim-token
-                  optional: true
+            - name: JELLYFIN_PublishedServerUrl
+              value: "http://192.168.1.127:8096"
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: cache
+              mountPath: /cache
             - name: media
-              mountPath: /data
+              mountPath: /media
               readOnly: true
-            - name: transcode
-              mountPath: /transcode
           resources:
             requests:
               memory: "512Mi"
@@ -52,24 +50,25 @@ spec:
               cpu: "2000m"
           livenessProbe:
             httpGet:
-              path: /identity
-              port: 32400
+              path: /health
+              port: 8096
             initialDelaySeconds: 60
             periodSeconds: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /identity
-              port: 32400
+              path: /health
+              port: 8096
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: plex-config-pvc
+            claimName: jellyfin-config-pvc
+        - name: cache
+          persistentVolumeClaim:
+            claimName: jellyfin-cache-pvc
         - name: media
           persistentVolumeClaim:
-            claimName: plex-media-pvc
-        - name: transcode
-          emptyDir:
-            medium: Memory
-            sizeLimit: 1Gi
+            claimName: jellyfin-media-pvc
