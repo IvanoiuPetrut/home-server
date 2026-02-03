@@ -127,6 +127,8 @@ spec:
               value: "joplin-db"
             - name: TZ
               value: "Europe/Bucharest"
+            - name: RUNNING_IN_DOCKER
+              value: "1"
           resources:
             requests:
               memory: "256Mi"
@@ -135,15 +137,13 @@ spec:
               memory: "1Gi"
               cpu: "1000m"
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 22300
             initialDelaySeconds: 90
             periodSeconds: 30
             timeoutSeconds: 5
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 22300
             initialDelaySeconds: 60
             periodSeconds: 10
