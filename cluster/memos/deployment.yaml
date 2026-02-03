@@ -17,6 +17,10 @@ spec:
       labels:
         app: memos
     spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: memos
           image: neosmemo/memos:stable
@@ -28,6 +32,8 @@ spec:
           env:
             - name: MEMOS_MODE
               value: "prod"
+            - name: MEMOS_PORT
+              value: "5230"
             - name: TZ
               value: "Europe/Bucharest"
           volumeMounts:
