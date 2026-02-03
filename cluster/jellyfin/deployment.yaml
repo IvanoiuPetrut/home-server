@@ -34,9 +34,15 @@ spec:
               protocol: TCP
           env:
             - name: TZ
-              value: "Europe/Bucharest"
+              valueFrom:
+                configMapKeyRef:
+                  name: jellyfin-config
+                  key: TZ
             - name: JELLYFIN_PublishedServerUrl
-              value: "http://192.168.1.127:8096"
+              valueFrom:
+                configMapKeyRef:
+                  name: jellyfin-config
+                  key: PUBLISHED_URL
           volumeMounts:
             - name: config
               mountPath: /config
