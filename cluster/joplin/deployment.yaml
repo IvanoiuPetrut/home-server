@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: joplin
+  namespace: joplin
+  labels:
+    app: joplin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: joplin
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: joplin
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: fix-permissions
+          image: busybox:latest
+          command: ["sh", "-c", "chown -R 1000:1000 /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          securityContext:
+            runAsUser: 0
+      containers:
+        - name: joplin
+          image: joplin/server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 22300
+              protocol: TCP
+          env:
+            - name: APP_PORT
+              value: "22300"
+            - name: APP_BASE_URL
+              value: "http://192.168.1.127:22300"
+            - name: DB_CLIENT
+              value: "sqlite3"
+            - name: SQLITE_DATABASE
+              value: "/data/joplin.db"
+            - name: TZ
+              value: "Europe/Bucharest"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 22300
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 22300
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: joplin-data-pvc
