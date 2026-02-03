@@ -1,6 +1,57 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: joplin-db
+  namespace: joplin
+  labels:
+    app: joplin-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: joplin-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: joplin-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_PASSWORD
+              value: "joplin_secure_password"
+            - name: POSTGRES_USER
+              value: "joplin"
+            - name: POSTGRES_DB
+              value: "joplin"
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: joplin-data-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: joplin
   namespace: joplin
   labels:
@@ -31,14 +82,19 @@ spec:
             - name: APP_BASE_URL
               value: "http://192.168.1.127:22300"
             - name: DB_CLIENT
-              value: "sqlite3"
-            - name: SQLITE_DATABASE
-              value: "/data/joplin.db"
+              value: "pg"
+            - name: POSTGRES_PASSWORD
+              value: "joplin_secure_password"
+            - name: POSTGRES_DATABASE
+              value: "joplin"
+            - name: POSTGRES_USER
+              value: "joplin"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_HOST
+              value: "joplin-db"
             - name: TZ
               value: "Europe/Bucharest"
-          volumeMounts:
-            - name: data
-              mountPath: /data
           resources:
             requests:
               memory: "256Mi"
@@ -50,17 +106,13 @@ spec:
             httpGet:
               path: /
               port: 22300
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 30
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /
               port: 22300
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: joplin-data-pvc
