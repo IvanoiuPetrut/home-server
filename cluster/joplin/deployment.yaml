@@ -17,6 +17,20 @@ spec:
       labels:
         app: joplin-db
     spec:
+      initContainers:
+        - name: fix-permissions
+          image: busybox:latest
+          command:
+            [
+              "sh",
+              "-c",
+              "chown -R 999:999 /var/lib/postgresql/data && chmod 700 /var/lib/postgresql/data",
+            ]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0
       containers:
         - name: postgres
           image: postgres:16
@@ -44,6 +58,24 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - joplin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - joplin
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
       volumes:
         - name: data
           persistentVolumeClaim:
